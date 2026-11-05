@@ -3,12 +3,12 @@
 const WRITING_STORAGE='shici.writing.v1';
 let WRITING_GUIDE=null;
 let WRITING={drafts:[],activeId:null,stage:'foundation',tab:'compose'};
-try{const c=JSON.parse(localStorage.getItem(WRITING_STORAGE)||'{}');if(Array.isArray(c.drafts))WRITING.drafts=c.drafts.filter(d=>d&&typeof d.id==='string'&&typeof d.body==='string'&&['foundation','advanced','final','ability'].includes(d.stage));WRITING.activeId=c.activeId;WRITING.stage=c.stage||'foundation';}catch{}
+try{const c=JSON.parse(localStorage.getItem(WRITING_STORAGE)||'{}');if(Array.isArray(c.drafts))WRITING.drafts=c.drafts.filter(d=>d&&typeof d.id==='string'&&typeof d.body==='string'&&['foundation','advanced','final','ability'].includes(d.stage));for(const d of WRITING.drafts){if(d.review)d.review=normalizeWritingReview(d.review);}WRITING.activeId=c.activeId;WRITING.stage=c.stage||'foundation';}catch{}
 const writingWords=text=>(String(text||'').match(/[A-Za-z]+(?:['’\-][A-Za-z]+)*|\d+(?:[.,]\d+)*/g)||[]).length;
 const shortWritingId=id=>String(id).slice(0,8);
 const writingDate=value=>value?new Date(value).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
 function writingStage(id){return WRITING_GUIDE?.stages.find(s=>s.id===id)||WRITING_GUIDE?.stages[0];}
-function writingLocation(submissionId=null){const u=new URL(location.href);u.searchParams.set('view','writing');if(submissionId)u.searchParams.set('submission',submissionId);else u.searchParams.delete('submission');history.replaceState(null,'',u.pathname+u.search+u.hash);}
+function writingLocation(submissionId=null){const u=new URL(location.href);u.searchParams.set('view','writing');if(submissionId)u.searchParams.set('submission',submissionId);else u.searchParams.delete('submission');if(WRITING.tab==='review')u.searchParams.set('tab','review');else u.searchParams.delete('tab');history.replaceState(null,'',u.pathname+u.search+u.hash);}
 async function loadWritingGuide(){try{const r=await fetch('./writing-sop.json?v=3.1.0');if(!r.ok)throw Error();WRITING_GUIDE=await r.json();}catch{WRITING_GUIDE=null;}}
 function writingPersist() {
   const drafts = WRITING.drafts.filter(draft => !draft.cloudOnly);
@@ -48,7 +48,7 @@ function updateWritingIndicators(){
 function renderWritingSidebar(){
   if(!WRITING_GUIDE)return '<aside class="sidebar" aria-label="作文练习阶段"><div class="side-note">作文方法暂未加载，请刷新。</div></aside>';
   const d=writingDraft(),stage=d.stage;
-  return `<aside class="sidebar writing-sidebar" aria-label="作文练习阶段"><div class="side-title"><strong>作文练习册</strong><span>STEP BY STEP</span></div><div class="writing-stage-list">${WRITING_GUIDE.stages.map(s=>`<button class="writing-stage ${s.id===stage?'active':''}" data-action="writing-stage" data-stage="${s.id}" aria-label="练习阶段 ${s.name}"><span>${s.number}</span><div><strong>${esc(s.name)}</strong><small>${esc(s.tag)}</small></div>${s.id===stage?icon('check',12):icon('chevron',11)}</button>`).join('')}</div><p class="writing-side-copy">阶段由你选择。先把基础练稳，再慢慢往上走。</p><div class="side-divider"></div><button class="btn primary full-width" data-action="writing-new">${icon('plus',13)} 新建练习</button><div class="writing-draft-heading"><span>我的草稿</span><small>${WRITING.drafts.length}</small></div><div class="writing-drafts">${WRITING.drafts.slice(0,12).map(x=>`<button class="writing-draft ${x.id===d.id&&WRITING.tab==='compose'?'active':''}" data-action="writing-open-draft" data-id="${esc(x.id)}"><strong>${esc(x.title||'未命名练习')}</strong><small>${esc(writingStage(x.stage)?.name||'基础款')} · ${writingDraftWords(x)} 词 · ${x.cloudOnly?'云端':'本机'}</small></button>`).join('')}</div><button class="demo-btn" data-action="writing-guide">${icon('book',14)}<span>本阶段练习方法</span>${icon('chevron',11)}</button><div class="side-note">草稿仅保存在当前浏览器。<br>点击「下载草稿」可备份，或把草稿文件带去批改。</div></aside>`;
+  return `<aside class="sidebar writing-sidebar" aria-label="作文练习阶段"><div class="side-title"><strong>作文练习册</strong><span>STEP BY STEP</span></div><div class="writing-stage-list">${WRITING_GUIDE.stages.map(s=>`<button class="writing-stage ${s.id===stage?'active':''}" data-action="writing-stage" data-stage="${s.id}" aria-label="练习阶段 ${s.name}"><span>${s.number}</span><div><strong>${esc(s.name)}</strong><small>${esc(s.tag)}</small></div>${s.id===stage?icon('check',12):icon('chevron',11)}</button>`).join('')}</div><p class="writing-side-copy">阶段由你选择。先把基础练稳，再慢慢往上走。</p><div class="side-divider"></div><button class="btn primary full-width" data-action="writing-new">${icon('plus',13)} 新建练习</button><div class="writing-draft-heading"><span>我的草稿</span><small>${WRITING.drafts.length}</small></div><div class="writing-drafts">${WRITING.drafts.slice(0,12).map(x=>`<button class="writing-draft ${x.id===d.id?'active':''}" data-action="writing-open-draft" data-id="${esc(x.id)}"><strong>${esc(x.title||'未命名练习')}</strong><small>${esc(writingStage(x.stage)?.name||'基础款')} · ${writingDraftWords(x)} 词 · ${x.cloudOnly?'云端':'本机'}</small></button>`).join('')}</div><button class="demo-btn" data-action="writing-guide">${icon('book',14)}<span>本阶段练习方法</span>${icon('chevron',11)}</button><div class="side-note">草稿仅保存在当前浏览器。<br>点击「下载草稿」可备份，或把草稿文件带去批改。</div></aside>`;
 }
 function renderWriting(){
   if(!WRITING_GUIDE)return '<div class="empty-view"><h2>暂未能加载作文方法</h2><button class="btn" data-action="reload">刷新重试</button></div>';
@@ -56,7 +56,11 @@ function renderWriting(){
   return `<div class="writing-page">${crumb('作文练习')}
     <div class="writing-heading"><div><div class="page-eyebrow"><i></i>YOUR WRITING NOTEBOOK</div>
     <h1>${esc(stage.headline)}</h1><p class="page-sub">选一道真题，练好这一稿。</p></div>${renderWritingCloudControls()}</div>
-    ${renderWritingComposer(draft,stage)}
+    <div class="review-tabs" role="group" aria-label="作文工作区">
+      <button class="btn ${WRITING.tab==='compose'?'primary':''}" aria-pressed="${WRITING.tab==='compose'}" data-action="writing-switch-compose">写作草稿</button>
+      <button class="btn ${WRITING.tab==='review'?'primary':''}" aria-pressed="${WRITING.tab==='review'}" data-action="writing-switch-review">作文批改</button>
+    </div>
+    ${WRITING.tab==='review'?renderWritingReview(draft):renderWritingComposer(draft,stage)}
     <footer class="footnote"><span>词库、阅读进度和草稿保存在当前浏览器。</span></footer>
   </div>`;
 }
@@ -66,6 +70,7 @@ function renderWritingComposer(d,s){
   <div>
     <button type="button" class="btn" data-action="writing-export-draft">${icon('download',12)} 下载草稿</button>
     ${d.cloudOnly ? '' : `<button type="button" class="btn primary" data-action="writing-save-local">${icon('check',12)} 保存到本机</button>`}
+    <button type="button" class="btn" data-action="writing-switch-review">去批改</button>
     ${renderWritingCloudSave()}
   </div>
 </div></form></section><aside class="writing-coach" aria-label="本阶段自检"><section class="rail-card"><div class="rail-title">${icon('leaf',15)} ${esc(s.name)} · 写完后自检</div><p class="writing-coach-intro">先检查功能是否完成，不必把每句话写得很复杂。</p><div class="writing-checks">${s.checks.map(c=>`<label><input type="checkbox" data-writing-check="${c.id}" ${d.checks.includes(c.id)?'checked':''}><span><strong>${esc(c.label)}</strong><small>${esc(c.help)}</small></span></label>`).join('')}</div><p class="writing-self-note">这是你的自检；批改时还会结合原文给出具体依据。</p></section><section class="writing-focus-card"><span class="overline">THIS STAGE</span><h3>这次先练好一件事</h3><p>${esc(s.avoid)}</p><button class="btn small" data-action="writing-copy-draft">${icon('plus',11)} 将当前草稿另存一份</button></section><p class="writing-next-note">${esc(s.ready)}<br>阶段由你决定，不自动升级。</p></aside></div>`;
@@ -75,13 +80,20 @@ function openWritingGuide(){
   openModal(`${modalHeader(s.name+' · 本阶段方法')}<p class="modal-description">${esc(s.goal)}</p><ol class="writing-guide-list">${s.focus.map(t=>`<li>${esc(t)}</li>`).join('')}</ol><div class="writing-guide-note">${esc(s.avoid)}</div><p class="writing-guide-source">依据你的 SOP 资料整理：${esc(s.source)}<br>这些是练习支架，不是官方评分量表；按实际题目和字数要求调整。</p><div class="modal-footer"><small>${esc(s.ready)}</small></div>`);
 }
 function handleWritingAction(action,button){
-  if(handleWritingCloudAction(action,button))return true;
+  if(handleWritingCloudAction(action,button)||handleWritingReviewAction(action,button))return true;
   if(!action.startsWith('writing-'))return false;
   void(async()=>{
     switch(action){
+      case 'writing-switch-compose':
+      case 'writing-switch-review':
+        WRITING.tab=action==='writing-switch-review'?'review':'compose';
+        writingLocation();
+        render();
+        window.scrollTo({top:0});
+        break;
       case 'writing-new':newWritingDraft();break;
-      case 'writing-open-draft':{WRITING.activeId=button.dataset.id;WRITING.tab='compose';const d=writingDraft(),e=writingExamById(d.examId);WRITING.stage=d.stage;if(e)showWritingExam(e);writingLocation();writingPersist();render();break;}
-      case 'writing-stage':{const stage=button.dataset.stage;if(WRITING.tab==='compose'){const d=writingDraft();d.stage=stage;d.checks=[];d.synced=false;d.updatedAt=new Date().toISOString();WRITING.stage=stage;writingPersist();render();toast('本篇已切换为'+writingStage(stage).name+'练习。');}else newWritingDraft(stage);break;}
+      case 'writing-open-draft':{WRITING.activeId=button.dataset.id;const d=writingDraft(),e=writingExamById(d.examId);WRITING.stage=d.stage;if(e)showWritingExam(e);writingLocation();writingPersist();render();break;}
+      case 'writing-stage':{const stage=button.dataset.stage;if(WRITING.tab==='compose'){const d=writingDraft();d.stage=stage;d.checks=[];d.synced=false;d.updatedAt=new Date().toISOString();WRITING.stage=stage;writingPersist();render();toast('本篇已切换为'+writingStage(stage).name+'练习。');}else {toast('请先回到「写作草稿」切换阶段。');}break;}
       case 'writing-guide':openWritingGuide();break;
       case 'writing-use-exam':applyWritingExam(button.dataset.id);break;
       case 'writing-custom-prompt':{const d=writingDraft();d.examId=null;d.synced=false;d.updatedAt=new Date().toISOString();writingPersist();render();break;}

@@ -71,7 +71,7 @@ function renderWritingCloudSave() {
 
 function cloudDraftDocument(d) {
   const {stage, title, prompt, body, outline, minWords, maxWords, minutes, checks, examId, createdAt} = d;
-  return {stage, title, prompt, body, outline, minWords, maxWords, minutes, checks, examId, createdAt};
+  return {stage, title, prompt, body, outline, minWords, maxWords, minutes, checks, examId, createdAt, ...(d.review ? {review: d.review} : {})};
 }
 
 async function signInWritingCloud(client) {
@@ -96,7 +96,12 @@ async function saveWritingCloudDraft(client) {
     return;
   }
   const owner = cloudUser.id;
-  const document = cloudDraftDocument(draft);
+  const serialized = JSON.stringify(cloudDraftDocument(draft));
+  if (new TextEncoder().encode(serialized).length > 290000) {
+    toast('这份草稿和批改记录过大，请先下载备份。');
+    return;
+  }
+  const document = JSON.parse(serialized);
   const known = draft.cloudLink?.owner === owner ? draft.cloudLink : null;
   cloudSaving = true;
   try {
@@ -159,6 +164,7 @@ async function openWritingCloudDraft(client, id) {
     createdAt: typeof createdAt === 'string' ? createdAt : data.updated_at,
     id: crypto.randomUUID(), synced: false, cloudOnly: true, updatedAt: data.updated_at,
     cloudLink: {owner, id: data.id, revision: data.revision},
+    review: normalizeWritingReview(data.document.review),
   };
   draft.cloudSnapshot = JSON.stringify(cloudDraftDocument(draft));
   const keepDraft = d => !d.cloudOnly || d.cloudLink.id !== id
@@ -166,7 +172,6 @@ async function openWritingCloudDraft(client, id) {
   WRITING.drafts = [draft, ...WRITING.drafts.filter(keepDraft)];
   WRITING.activeId = draft.id;
   WRITING.stage = draft.stage;
-  WRITING.tab = 'compose';
   const exam = writingExamById(draft.examId);
   if (exam) showWritingExam(exam);
   writingPersist();

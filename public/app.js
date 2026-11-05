@@ -41,7 +41,7 @@ async function boot(){
     if(!DATA.periods.some(p=>p.id===state.period))state.period='2026.06';
     if(![2020,2021,2022,2023,2024,2025,2026].includes(Number(state.year)))state.year=2026;
     if(!currentArticle()&&!state.article.startsWith('paper-'))state.article=DATA.articles[0].id;
-    const pageQuery=new URLSearchParams(location.search);if(pageQuery.get('view')==='writing'){state.view='writing';}
+    const pageQuery=new URLSearchParams(location.search);if(pageQuery.get('view')==='writing'){state.view='writing';if(pageQuery.get('tab')==='review')WRITING.tab='review';}
     render();
     fetch('./dict/core.json?v='+CONTENT_VERSION).then(r=>{if(!r.ok)throw new Error();return r.json();}).then(d=>{core=d;dictionaryReady=true;if(state.view==='reader')refreshReaderWords();}).catch(()=>{toast('基础词典暂未加载，点击单词时会重试分卷词典。');});
     if(storageFailed)toast('本地存储不可用或数据损坏。请使用导出备份。');
