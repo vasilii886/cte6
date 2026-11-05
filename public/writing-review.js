@@ -41,6 +41,8 @@ function normalizeReviewEntry(entry = {}) {
     category: reviewCategories.includes(entry.category) ? entry.category : '其他',
     ...fields,
     color: Object.hasOwn(reviewColors, entry.color) ? entry.color : 'yellow',
+    remove: entry.remove === true,
+    anchor: reviewRanges([entry.anchor], 40000)[0] ?? null,
     marks: {
       original: reviewRanges(entry.marks?.original, fields.original.length),
       revised: reviewRanges(entry.marks?.revised, fields.revised.length),
@@ -95,7 +97,6 @@ function renderReviewSentence(entry, side, index) {
 function renderReviewEntry(entry, index) {
   return `<article class="review-entry" data-review-entry="${index}">
     <div class="review-entry-heading">
-      <h3>第 ${index + 1} 条修改</h3>
       <label>批改类别<select data-review-field="category">${reviewCategories.map(category =>
         `<option ${category === entry.category ? 'selected' : ''}>${category}</option>`).join('')}</select></label>
       <label>高亮颜色<select data-review-field="color">${Object.entries(reviewColors).map(([key, name]) =>
@@ -104,6 +105,7 @@ function renderReviewEntry(entry, index) {
     </div>
     <div class="review-sentences">${renderReviewSentence(entry, 'original', index)}${renderReviewSentence(entry, 'revised', index)}</div>
     <div class="review-notes">
+      <label class="review-remove-text"><input type="checkbox" data-review-field="remove" ${entry.remove ? 'checked' : ''}> 从改后全文删去这段原句</label>
       <label>修改理由<textarea data-review-field="reason" rows="3" maxlength="${reviewLimits.reason}" placeholder="这句话要完成什么功能？为什么这样改？">${esc(entry.reason)}</textarea></label>
       <label>Skill 规则和 PDF 依据<input data-review-field="basis" maxlength="${reviewLimits.basis}" value="${esc(entry.basis)}" placeholder="例如：搭配和词义 · 基础款第 11 页公式 5"></label>
     </div>
@@ -111,6 +113,9 @@ function renderReviewEntry(entry, index) {
 }
 
 function renderWritingReview(draft) {
+  if (reviewView.draftId !== draft.id) {
+    Object.assign(reviewView, {draftId: draft.id, active: null, editing: false});
+  }
   const review = ensureWritingReview(draft);
   const source = review?.source ?? reviewSource(draft);
   const exam = writingExamById(source.examId);
@@ -126,23 +131,20 @@ function renderWritingReview(draft) {
       </div>
     </header>
     <details class="review-source"><summary>查看完整题面</summary>${source.prompt ? renderSubmissionExam({exam_id: source.examId, prompt: source.prompt}) : '<p>这份草稿还没有题面。</p>'}</details>
-    <details class="review-source" ${!review?.entries.length ? 'open' : ''}>
-      <summary>${review ? '查看原稿快照' : '查看当前原稿'}</summary>
-      <p class="review-original" lang="en">${esc(source.body || '还没有写正文。可返回「写作草稿」开始写。')}</p>
-    </details>
     ${review ? `
+      <details class="review-source"><summary>立意、总评与练习档位${review.band ? ` · ${esc(review.band)}` : ''}</summary>
       <div class="review-assessment">
         <label>练习档位<input data-review-meta="band" maxlength="80" value="${esc(review.band)}" placeholder="例如：9 档上沿，冲 11 档"></label>
         <label>立意与总评<textarea data-review-meta="summary" rows="3" maxlength="1800" placeholder="记下中心观点、整体表现和下次优先练习的内容">${esc(review.summary)}</textarea></label>
-      </div>
-      <div class="review-entries">${review.entries.map(renderReviewEntry).join('')}</div>
+      </div></details>
+      ${renderReviewComparison(review)}
       <div class="review-actions review-footer">
-        <button class="btn primary" data-action="writing-review-add" ${review.entries.length >= reviewMaxEntries ? 'disabled' : ''}>${icon('plus',12)} 添加逐句修改</button>
         ${renderWritingCloudSave()}
         <span id="writing-save-status" role="status">${esc(writingStatus())}</span>
       </div>` : `
       <div class="review-empty">
         <p>开始批改时会保留当前原稿。每一条可以写原句、改句、理由和依据，并给词句加高亮。</p>
+        ${source.body.trim() ? '' : '<p>还没有写正文。可返回「写作草稿」开始写。</p>'}
         <button class="btn primary" data-action="writing-review-start" ${source.body.trim() ? '' : 'disabled'}>开始批改</button>
       </div>`}
   </section>`;
@@ -180,8 +182,9 @@ function updateReviewInput(target) {
       entry.marks[field] = entry.marks[field].filter(({start, end}) =>
         target.value.slice(start, end) === oldText.slice(start, end)
       );
+      if (field === 'original' && target.value.trim() !== oldText.trim()) entry.anchor = null;
     }
-    entry[field] = target.value;
+    entry[field] = field === 'remove' ? target.checked : target.value;
     if (field === 'original' || field === 'revised') showReviewMarks(card, entry, field);
     if (field === 'color') for (const side of ['original', 'revised']) showReviewMarks(card, entry, side);
   }
@@ -220,23 +223,52 @@ function handleWritingReviewAction(action, button) {
   switch (action) {
     case 'writing-review-start':
       if (!review && draft.body.trim()) {
-        draft.review = {source: reviewSource(draft), band: '', summary: '', entries: [normalizeReviewEntry()]};
+        draft.review = {source: reviewSource(draft), band: '', summary: '', entries: []};
         persistReviewEdit(draft);
         render();
       }
       break;
-    case 'writing-review-add':
-      if (review && review.entries.length < reviewMaxEntries) {
-        review.entries.push(normalizeReviewEntry());
-        persistReviewEdit(draft);
+    case 'writing-review-layout':
+      if (Object.hasOwn(reviewLayouts, button.dataset.layout)) {
+        reviewView.layout = button.dataset.layout;
         render();
-        document.getElementById(`review-${review.entries.length - 1}-original`)?.focus();
+      }
+      break;
+    case 'writing-review-select':
+      if (review && !(button.classList.contains('review-diff') && window.getSelection()?.toString())) {
+        selectReviewEntry(review, Number(button.dataset.reviewIndex));
+      }
+      break;
+    case 'writing-review-edit':
+      if (review) selectReviewEntry(review, reviewView.active, true);
+      break;
+    case 'writing-review-finish':
+      reviewView.editing = false;
+      render();
+      break;
+    case 'writing-review-add-selection':
+      if (review && review.entries.length < reviewMaxEntries) {
+        const quote = selectedReviewQuote(review.source.body);
+        if (quote && quote.text.length > reviewLimits.original) {
+          toast('请一次选一两句，方便逐条记录。');
+          break;
+        }
+        const index = review.entries.length;
+        review.entries.push(normalizeReviewEntry(quote ? {
+          original: quote.text, anchor: {start: quote.start, end: quote.end},
+        } : {}));
+        persistReviewEdit(draft);
+        window.getSelection()?.removeAllRanges();
+        selectReviewEntry(review, index, true);
+        document.getElementById(`review-${index}-${quote ? 'revised' : 'original'}`)?.focus({preventScroll: true});
       }
       break;
     case 'writing-review-remove':
       if (review) {
         const index = Number(button.closest('[data-review-entry]').dataset.reviewEntry);
         const removed = review.entries.splice(index, 1)[0];
+        reviewView.active = null;
+        reviewView.editing = false;
         persistReviewEdit(draft);
         render();
         openModal(`${modalHeader('已移除这条修改')}<p>如果点错了，可以撤销。</p>
@@ -288,7 +320,7 @@ function importWritingReview(value) {
   if (!existing) {
     draft.review = incoming;
   } else {
-    const signature = entry => JSON.stringify([entry.category, entry.original, entry.revised, entry.reason, entry.basis]);
+    const signature = entry => JSON.stringify([entry.category, entry.original, entry.revised, entry.reason, entry.basis, entry.remove]);
     const known = new Set(existing.entries.map(signature));
     const additions = incoming.entries.filter(entry => {
       const key = signature(entry);
