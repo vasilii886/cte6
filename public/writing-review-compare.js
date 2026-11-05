@@ -104,7 +104,7 @@ function renderReviewCompareText(doc) {
       const manual = value === original ? entry.marks[side === 0 ? 'original' : 'revised'] : [];
       const marks = reviewMergeMarks(value, [...automatic[side], ...manual]);
       html[side] += `<span class="review-diff ${marks.length ? '' : 'review-diff-note'}" role="button" tabindex="0"
-        aria-label="查看第 ${index + 1} 条修改理由" aria-pressed="${reviewView.active === index}"
+        aria-label="查看${reviewColors[entry.color]}${esc(entry.category)}修改理由" aria-pressed="${reviewView.active === index}"
         data-action="writing-review-select" data-review-index="${index}">${renderReviewMarkText(value, marks, entry.color)}</span>`;
     }
     end = next;
@@ -117,21 +117,27 @@ function renderReviewInspector(review, doc) {
   const index = reviewView.active;
   const entry = index === null ? null : review.entries[index];
   if (entry && reviewView.editing) {
-    return `<div class="review-inspector-head"><h3>编辑第 ${index + 1} 条</h3>
+    return `<div class="review-inspector-head"><h3>编辑${reviewColors[entry.color]}${esc(entry.category)}</h3>
       <button class="btn primary small" data-action="writing-review-finish">完成编辑</button></div>
       ${renderReviewEntry(entry, index)}`;
   }
   return `<div class="review-inspector-head"><h3>修改说明</h3>
     ${entry ? '<button class="btn small" data-action="writing-review-edit">编辑本条</button>' : ''}</div>
     ${entry ? `
-      <p class="review-entry-label"><span class="tag">第 ${index + 1} 条 · ${esc(entry.category)}</span> ${esc(doc.status[index])}</p>
+      <p class="review-entry-label"><span class="tag review-color-label review-mark-${entry.color}">${reviewColors[entry.color]} · ${esc(entry.category)}</span> ${esc(doc.status[index])}</p>
       <div class="review-reason">${esc(entry.reason || '这条还没有填写理由。')}</div>
       ${entry.basis ? `<p class="review-basis"><strong>Skill / PDF 依据</strong><br>${esc(entry.basis)}</p>` : ''}
     ` : '<p class="review-muted">点击正文中有颜色的改动，这里会显示原因和依据。</p>'}
-    ${review.entries.length ? `<div class="review-index" aria-label="所有批改条目">${review.entries.map((item, i) =>
-      `<button class="btn small" aria-pressed="${index === i}" data-action="writing-review-select" data-review-index="${i}"
-        aria-label="第 ${i + 1} 条 · ${esc(item.category)} · ${esc(doc.status[i])}">${i + 1} · ${esc(item.category)}</button>`
-    ).join('')}</div>` : ''}`;
+    ${review.entries.length ? `<div class="review-index" aria-label="按颜色查看批改">${review.entries.map((item, i) => {
+      const quote = (item.original || item.revised).replace(/\s+/g, ' ').trim();
+      const duplicate = review.entries.some((other, j) => j !== i && other.color === item.color && other.category === item.category);
+      const snippet = quote.length > 24 ? quote.slice(0, 24) + '…' : quote;
+      return `<button class="btn small review-color-chip review-mark-${item.color}" aria-pressed="${index === i}"
+        data-action="writing-review-select" data-review-index="${i}" title="${esc(quote || doc.status[i])}"
+        aria-label="${reviewColors[item.color]} · ${esc(item.category)} · ${esc(quote || doc.status[i])}">
+        ${esc(item.category)}${duplicate && snippet ? `<span lang="en">${esc(snippet)}</span>` : ''}
+      </button>`;
+    }).join('')}</div>` : ''}`;
 }
 
 function renderReviewComparison(review) {
@@ -157,7 +163,7 @@ function renderReviewComparison(review) {
   </div>`;
 }
 
-function selectReviewEntry(review, index, editing = false) {
+function selectReviewEntry(review, index, editing = false, locate = false) {
   if (!Number.isInteger(index) || !review.entries[index]) return;
   const refreshPapers = reviewView.editing && !editing;
   reviewView.active = index;
@@ -167,6 +173,16 @@ function selectReviewEntry(review, index, editing = false) {
   inspector.innerHTML = renderReviewInspector(review, reviewDocument(review));
   document.querySelectorAll('.review-diff').forEach(node =>
     node.setAttribute('aria-pressed', String(Number(node.dataset.reviewIndex) === index)));
+  if (locate) {
+    const paper = reviewView.layout === 'revised' ? '.review-paper-revised' : '.review-paper-original';
+    const target = document.querySelector(`${paper} .review-diff[data-review-index="${index}"]`);
+    if (target) {
+      target.scrollIntoView?.({block: 'nearest'});
+      target.focus({preventScroll: true});
+      return;
+    }
+    inspector.querySelector('.review-color-chip[aria-pressed="true"]')?.focus({preventScroll: true});
+  }
   if (editing || window.matchMedia?.('(max-width: 1100px)').matches) {
     inspector.focus({preventScroll: true});
     inspector.scrollIntoView?.({block: 'nearest'});

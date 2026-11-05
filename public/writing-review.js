@@ -236,7 +236,7 @@ function handleWritingReviewAction(action, button) {
       break;
     case 'writing-review-select':
       if (review && !(button.classList.contains('review-diff') && window.getSelection()?.toString())) {
-        selectReviewEntry(review, Number(button.dataset.reviewIndex));
+        selectReviewEntry(review, Number(button.dataset.reviewIndex), false, button.classList.contains('review-color-chip'));
       }
       break;
     case 'writing-review-edit':

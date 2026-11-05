@@ -81,10 +81,14 @@
 .review-highlight-tools { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .review-preview { margin: 8px 0 0; font: 16px/1.6 Georgia, serif; }
 .review-mark { color: #24342b; border-radius: 2px; }
-.review-mark-yellow { background: #ffed99; }
-.review-mark-green { background: #c9ebc4; }
-.review-mark-blue { background: #cde5ff; }
-.review-mark-pink { background: #fbd4e4; }
+.review-mark-yellow { --review-color: #ffed99; }
+.review-mark-green { --review-color: #c9ebc4; }
+.review-mark-blue { --review-color: #cde5ff; }
+.review-mark-pink { --review-color: #fbd4e4; }
+.review-mark, .review-entry-label .review-color-label, .review-index .review-color-chip {
+  background: var(--review-color, #ffed99);
+  color: #24342b;
+}
 .review-assessment, .review-notes { display: grid; gap: 10px; }
 .review-notes { margin-top: 12px; }
 .review-footer { margin-top: 10px; }
@@ -139,7 +143,7 @@
   overflow-wrap: anywhere;
 }
 
-.review-diff { cursor: pointer; border-radius: 2px; }
+.review-diff { cursor: pointer; border-radius: 2px; scroll-margin-block: 110px 24px; }
 .review-diff-note { text-decoration: underline dotted #71896a; text-underline-offset: 3px; }
 .review-diff:hover, .review-diff[aria-pressed="true"] { background: #e0ecdc; }
 .review-diff:focus-visible { outline: 2px solid #397758; outline-offset: 2px; }
@@ -156,7 +160,8 @@
 .review-entry-label, .review-basis { font-size: 12px; color: var(--review-muted); }
 .review-reason, .review-basis { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 .review-index { margin-top: 12px; border-top: 1px solid var(--review-border); padding-top: 10px; }
-.review-index button[aria-pressed="true"] { background: #e1ede0; border-color: #7c9e7c; }
+.review-index .review-color-chip[aria-pressed="true"] { border-color: #325845; box-shadow: inset 0 0 0 1px #325845; }
+.review-index .review-color-chip span { font-weight: 400; }
 .review-inspector .review-entry { margin: 10px 0 0; padding: 0; border: 0; }
 .review-inspector .review-sentences { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .review-inspector .review-remove-text { display: flex; gap: 6px; align-items: center; }
