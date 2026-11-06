@@ -134,3 +134,48 @@
 .writing-editor-footer > div {
   flex-wrap: wrap;
 }
+
+
+.writing-draft-row,
+.writing-cloud-draft-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+}
+.writing-cloud-draft-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.writing-cloud-draft-title {
+  min-width: 0;
+}
+.writing-cloud-draft-title strong,
+.writing-cloud-draft-title small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.writing-cloud-draft-title small,
+.writing-draft-list-empty {
+  color: #667661;
+  font-size: 11px;
+}
+.writing-draft-delete.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 36px;
+  padding: 0;
+  color: #695b55;
+}
+.writing-draft-delete.icon-btn:hover,
+.writing-draft-delete.icon-btn:focus-visible {
+  color: #8d352e;
+  background: #f9ede9;
+}
+.writing-draft-delete-confirm.btn {
+  color: white;
+  background: #983e34;
+  border-color: #983e34;
+}

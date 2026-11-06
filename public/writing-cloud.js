@@ -3,7 +3,7 @@
 const writingCloudEnabled = /^https:\/\/[a-z0-9]+\.supabase\.co\/?$/.test(WRITING_CLOUD_CONFIG.url)
   && /^sb_publishable_[A-Za-z0-9_-]+$/.test(WRITING_CLOUD_CONFIG.publishableKey);
 const cloudDraftTable = 'cet6_writing_drafts';
-let cloudClientPromise, cloudUser = null, cloudSaving = false;
+let cloudClientPromise, cloudUser = null, cloudDraftBusy = false;
 
 function loadWritingCloudSdk() {
   return new Promise((resolve, reject) => {
@@ -88,7 +88,10 @@ async function signInWritingCloud(client) {
 }
 
 async function saveWritingCloudDraft(client) {
-  if (cloudSaving) return;
+  if (cloudDraftBusy) {
+    toast('请等待正在进行的云端操作。');
+    return;
+  }
   if (!cloudUser) {
     toast('请先用 GitHub 登录，再保存到云端。');
     return;
@@ -106,7 +109,7 @@ async function saveWritingCloudDraft(client) {
   }
   const document = JSON.parse(serialized);
   const known = draft.cloudLink?.owner === owner ? draft.cloudLink : null;
-  cloudSaving = true;
+  cloudDraftBusy = true;
   try {
     const table = client.from(cloudDraftTable);
     const operation = known
@@ -129,23 +132,90 @@ async function saveWritingCloudDraft(client) {
     if (WRITING.activeId === draft.id) updateWritingIndicators();
     toast('这一稿已保存到云端。');
   } finally {
-    cloudSaving = false;
+    cloudDraftBusy = false;
   }
+}
+
+function renderWritingCloudDelete(row, fromList = false) {
+  const attributes = `data-revision="${esc(row.revision)}" data-title="${esc(row.title)}" data-from-cloud-list="${fromList}"`;
+  return renderWritingDraftDelete('writing-cloud-delete', row.id, row.title, '云端', attributes);
+}
+
+function confirmCloudWritingDraftDeletion(button) {
+  const owner = cloudUser?.id;
+  const {id, title} = button.dataset;
+  const revision = Number(button.dataset.revision);
+  if (!owner || !id || !Number.isSafeInteger(revision) || revision < 0 || button.dataset.revision === '') return;
+  const fromList = button.dataset.fromCloudList === 'true';
+  const linked = draft => draft.cloudLink?.owner === owner && draft.cloudLink.id === id;
+  const hasUnsavedEdits = WRITING.drafts.some(draft => linked(draft) && draft.cloudOnly
+    && draft.cloudSnapshot !== JSON.stringify(cloudDraftDocument(draft)));
+  const detail = hasUnsavedEdits
+    ? '这份云端草稿和当前打开的未保存修改会一起删除。已有本机副本会保留。'
+    : '此账号下各设备的云端记录和附带批改会被删除。已有本机副本会保留。';
+  confirmWritingDraftDeletion('云端', title, detail, async confirm => {
+    if (cloudUser?.id !== owner) return;
+    if (cloudDraftBusy) {
+      toast('请等待正在进行的云端操作。');
+      return;
+    }
+    cloudDraftBusy = true;
+    try {
+      const client = await connectWritingCloud();
+      if (cloudUser?.id !== owner) return;
+      const {data, error} = await client.from(cloudDraftTable).delete()
+        .eq('owner_id', owner).eq('id', id).eq('revision', revision).select('id').maybeSingle();
+      if (cloudUser?.id !== owner) return;
+      if (error?.code === '42501' || (!error && !data)) {
+        toast('云端未删除。草稿可能已更新，或账号缺少删除权限。');
+        return;
+      }
+      if (error) throw error;
+      WRITING.drafts = WRITING.drafts.filter(draft => !draft.cloudOnly || !linked(draft));
+      for (const draft of WRITING.drafts) {
+        if (linked(draft)) delete draft.cloudLink;
+      }
+      selectRemainingWritingDraft();
+      const saved = writingPersist();
+      const refreshList = (confirm.isConnected && fromList) || document.querySelector('[data-writing-cloud-list]');
+      if (confirm.isConnected) closeModal();
+      if (state.view === 'writing') {
+        render();
+        if (refreshList) {
+          try {
+            await listWritingCloudDrafts(client);
+          } catch {
+            toast('云端草稿已删除，列表刷新失败，请重新打开。');
+            return;
+          }
+        }
+      }
+      toast(saved ? '云端草稿已删除。' : '云端草稿已删除，本机同步状态保存失败。');
+    } catch {
+      toast('云端删除未确认，请重新打开列表核对。');
+    } finally {
+      cloudDraftBusy = false;
+    }
+  }, fromList);
 }
 
 async function listWritingCloudDrafts(client) {
   const owner = cloudUser?.id;
   if (!owner) return;
   const {data, error} = await client.from(cloudDraftTable)
-    .select('id, title:document->>title, updated_at')
+    .select('id, title:document->>title, updated_at, revision')
     .eq('owner_id', owner).order('updated_at', {ascending: false}).limit(100);
   if (cloudUser?.id !== owner || state.view !== 'writing') return;
   if (error) throw error;
-  const rows = data.map(row => `<p>
-    <button class="btn" data-action="writing-cloud-open" data-id="${esc(row.id)}">打开</button>
-    ${esc(row.title || '未命名练习')} · ${esc(writingDate(row.updated_at))}
-  </p>`).join('');
-  openModal(`${modalHeader('我的云端草稿')}<div>${rows || '<p>还没有保存到云端的作文。</p>'}</div>`);
+  const rows = data.map(row => {
+    const title = row.title || '未命名练习';
+    return `<div class="writing-cloud-draft-row" data-writing-draft-row>
+      <div class="writing-cloud-draft-title"><strong>${esc(title)}</strong><small>${esc(writingDate(row.updated_at))}</small></div>
+      <button class="btn small" data-action="writing-cloud-open" data-id="${esc(row.id)}">打开</button>
+      ${renderWritingCloudDelete({...row, title}, true)}
+    </div>`;
+  }).join('');
+  openModal(`${modalHeader('我的云端草稿')}<div data-writing-cloud-list>${rows || '<p>还没有保存到云端的作文。</p>'}</div>`);
 }
 
 async function openWritingCloudDraft(client, id) {
@@ -189,6 +259,10 @@ async function openWritingCloudDraft(client, id) {
 function handleWritingCloudAction(action, button) {
   if (!action.startsWith('writing-cloud-')) return false;
   if (!writingCloudEnabled) return true;
+  if (action === 'writing-cloud-delete') {
+    confirmCloudWritingDraftDeletion(button);
+    return true;
+  }
   const requestedDraft = action === 'writing-cloud-save' ? WRITING.activeId : null;
   void (async () => {
     const client = await connectWritingCloud();
@@ -210,7 +284,8 @@ function handleWritingCloudAction(action, button) {
         await listWritingCloudDrafts(client);
         break;
       case 'writing-cloud-open':
-        await openWritingCloudDraft(client, button.dataset.id);
+        if (cloudDraftBusy) toast('请等待正在进行的云端操作。');
+        else await openWritingCloudDraft(client, button.dataset.id);
         break;
     }
   })().catch(() => toast('云端操作未完成，请检查网络或数据库状态后重试。'));

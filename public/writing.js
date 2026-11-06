@@ -3,7 +3,7 @@
 const WRITING_STORAGE='shici.writing.v1';
 let WRITING_GUIDE=null;
 let WRITING={drafts:[],activeId:null,stage:'foundation',tab:'compose'};
-try{const c=JSON.parse(localStorage.getItem(WRITING_STORAGE)||'{}');if(Array.isArray(c.drafts))WRITING.drafts=c.drafts.filter(d=>d&&typeof d.id==='string'&&typeof d.body==='string'&&['foundation','advanced','final','ability'].includes(d.stage));for(const d of WRITING.drafts){if(d.review)d.review=normalizeWritingReview(d.review);}WRITING.activeId=c.activeId;WRITING.stage=c.stage||'foundation';}catch{}
+try{const c=JSON.parse(localStorage.getItem(WRITING_STORAGE)||'{}');if(Array.isArray(c.drafts))WRITING.drafts=c.drafts.filter(d=>d&&typeof d.id==='string'&&typeof d.body==='string'&&['foundation','advanced','final','ability'].includes(d.stage));for(const d of WRITING.drafts){if(d.review)d.review=normalizeWritingReview(d.review);}WRITING.activeId=WRITING.drafts.find(d=>d.id===c.activeId)?.id??WRITING.drafts[0]?.id??null;WRITING.stage=c.stage||'foundation';}catch{}
 const writingWords=text=>(String(text||'').match(/[A-Za-z]+(?:['’\-][A-Za-z]+)*|\d+(?:[.,]\d+)*/g)||[]).length;
 const shortWritingId=id=>String(id).slice(0,8);
 const writingDate=value=>value?new Date(value).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
@@ -15,7 +15,7 @@ function writingPersist() {
   const active = drafts.find(draft => draft.id === WRITING.activeId) ?? drafts[0];
   try {
     localStorage.setItem(WRITING_STORAGE, JSON.stringify({
-      drafts, activeId: active?.id ?? null, stage: active?.stage ?? 'foundation',
+      drafts, activeId: active?.id ?? null, stage: active?.stage ?? WRITING.stage,
     }));
     WRITING.localFailed = false;
     return true;
@@ -24,7 +24,10 @@ function writingPersist() {
     return false;
   }
 }
-function writingDraft(){let d=WRITING.drafts.find(d=>d.id===WRITING.activeId);if(!d){d={id:crypto.randomUUID(),stage:writingStage(WRITING.stage)?.id||'foundation',title:'',prompt:'',body:'',outline:'',minWords:150,maxWords:200,minutes:null,checks:[],version:0,synced:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),parentSubmissionId:null};WRITING.drafts.unshift(d);WRITING.activeId=d.id;writingPersist();}d.checks=Array.isArray(d.checks)?d.checks:[];return d;}
+function activeWritingDraft() {
+  return WRITING.drafts.find(draft => draft.id === WRITING.activeId);
+}
+function writingDraft(){let d=activeWritingDraft();if(!d){d={id:crypto.randomUUID(),stage:writingStage(WRITING.stage)?.id||'foundation',title:'',prompt:'',body:'',outline:'',minWords:150,maxWords:200,minutes:null,checks:[],version:0,synced:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),parentSubmissionId:null};WRITING.drafts.unshift(d);WRITING.activeId=d.id;writingPersist();}d.checks=Array.isArray(d.checks)?d.checks:[];return d;}
 function newWritingDraft(stage=WRITING.stage,base=null){
   const d={id:crypto.randomUUID(),stage:writingStage(stage)?.id||'foundation',title:base?.title||'',prompt:base?.prompt||'',body:base?.body||'',outline:base?.outline||'',minWords:base?.minWords??150,maxWords:base?.maxWords??200,minutes:null,checks:[],version:0,synced:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),parentSubmissionId:base?.parentSubmissionId||null,examId:base?.examId||null};
   d.training = normalizeWritingTraining(base?.training, d.parentSubmissionId);
@@ -46,10 +49,21 @@ function updateWritingIndicators(){
   if(n){n.textContent=writingCountLabel(d);n.classList.toggle('outside-range',wc>0&&(wc<d.minWords||wc>d.maxWords));}
   if(status)status.textContent=writingStatus();const opening=document.querySelector('#writing-opening-status');if(opening)opening.textContent=examOpeningStatus(d);
 }
+function renderWritingDraftRow(draft, active) {
+  const title = draft.title || '未命名练习';
+  return `<div class="writing-draft-row" data-writing-draft-row>
+    <button class="writing-draft ${active ? 'active' : ''}" data-action="writing-open-draft" data-id="${esc(draft.id)}">
+      <strong>${esc(title)}</strong><small>${esc(writingStage(draft.stage)?.name || '基础款')} · ${writingDraftWords(draft)} 词 · ${draft.cloudOnly ? '云端' : '本机'}</small>
+    </button>
+    ${draft.cloudOnly
+      ? renderWritingCloudDelete({...draft.cloudLink, title})
+      : renderWritingDraftDelete('writing-draft-delete', draft.id, title, '本机')}
+  </div>`;
+}
 function renderWritingSidebar(){
   if(!WRITING_GUIDE)return '<aside class="sidebar" aria-label="作文练习阶段"><div class="side-note">作文方法暂未加载，请刷新。</div></aside>';
-  const d=writingDraft(),stage=d.stage;
-  return `<aside class="sidebar writing-sidebar" aria-label="作文练习阶段"><div class="side-title"><strong>作文练习册</strong><span>STEP BY STEP</span></div><div class="writing-stage-list">${WRITING_GUIDE.stages.map(s=>`<button class="writing-stage ${s.id===stage?'active':''}" data-action="writing-stage" data-stage="${s.id}" aria-label="练习阶段 ${s.name}"><span>${s.number}</span><div><strong>${esc(s.name)}</strong><small>${esc(s.tag)}</small></div>${s.id===stage?icon('check',12):icon('chevron',11)}</button>`).join('')}</div><p class="writing-side-copy">按四阶段路线练习。选阶段用于设定本稿目标，晋级以教练验收为准。</p><div class="side-divider"></div><button class="btn primary full-width" data-action="writing-new">${icon('plus',13)} 新建练习</button><div class="writing-draft-heading"><span>我的草稿</span><small>${WRITING.drafts.length}</small></div><div class="writing-drafts">${WRITING.drafts.slice(0,12).map(x=>`<button class="writing-draft ${x.id===d.id?'active':''}" data-action="writing-open-draft" data-id="${esc(x.id)}"><strong>${esc(x.title||'未命名练习')}</strong><small>${esc(writingStage(x.stage)?.name||'基础款')} · ${writingDraftWords(x)} 词 · ${x.cloudOnly?'云端':'本机'}</small></button>`).join('')}</div><button class="demo-btn" data-action="writing-guide">${icon('book',14)}<span>本阶段练习方法</span>${icon('chevron',11)}</button><div class="side-note">本机草稿自动保存在当前浏览器。云端草稿需手动保存。</div></aside>`;
+  const d=activeWritingDraft(),stage=d?.stage ?? WRITING.stage;
+  return `<aside class="sidebar writing-sidebar" aria-label="作文练习阶段"><div class="side-title"><strong>作文练习册</strong><span>STEP BY STEP</span></div><div class="writing-stage-list">${WRITING_GUIDE.stages.map(s=>`<button class="writing-stage ${s.id===stage?'active':''}" data-action="writing-stage" data-stage="${s.id}" aria-label="练习阶段 ${s.name}"><span>${s.number}</span><div><strong>${esc(s.name)}</strong><small>${esc(s.tag)}</small></div>${s.id===stage?icon('check',12):icon('chevron',11)}</button>`).join('')}</div><p class="writing-side-copy">按四阶段路线练习。选阶段用于设定本稿目标，晋级以教练验收为准。</p><div class="side-divider"></div><button class="btn primary full-width" data-action="writing-new">${icon('plus',13)} 新建练习</button><div class="writing-draft-heading"><span>我的草稿</span><small>${WRITING.drafts.length}</small></div><div class="writing-drafts">${WRITING.drafts.map(draft => renderWritingDraftRow(draft, draft.id === d?.id)).join('') || '<p class="writing-draft-list-empty">暂无草稿</p>'}</div><button class="demo-btn" data-action="writing-guide">${icon('book',14)}<span>本阶段练习方法</span>${icon('chevron',11)}</button><div class="side-note">本机草稿自动保存在当前浏览器。云端草稿需手动保存。</div></aside>`;
 }
 const foundationFormulas = [
   {
@@ -112,18 +126,24 @@ function renderFoundationFormulas(practice) {
 
 function renderWriting(){
   if(!WRITING_GUIDE)return '<div class="empty-view"><h2>暂未能加载作文方法</h2><button class="btn" data-action="reload">刷新重试</button></div>';
-  const draft=writingDraft(),stage=writingStage(draft.stage);
-  const practice = WRITING.tab === 'review' ? draft.review?.source ?? draft : draft;
+  const draft = activeWritingDraft();
+  const stage = writingStage(draft?.stage ?? WRITING.stage);
+  const practice = WRITING.tab === 'review' ? draft?.review?.source ?? draft : draft;
   return `<div class="writing-page">${crumb('作文练习')}
     <div class="writing-heading"><div><div class="page-eyebrow"><i></i>YOUR WRITING NOTEBOOK</div>
     <h1>${esc(stage.headline)}</h1><p class="page-sub">选一道真题，练好这一稿。</p></div>${renderWritingCloudControls()}</div>
-    <div class="review-tabs" role="group" aria-label="作文工作区">
+    ${draft ? `<div class="review-tabs" role="group" aria-label="作文工作区">
       <button class="btn ${WRITING.tab==='compose'?'primary':''}" aria-pressed="${WRITING.tab==='compose'}" data-action="writing-switch-compose">写作草稿</button>
       <button class="btn ${WRITING.tab==='review'?'primary':''}" aria-pressed="${WRITING.tab==='review'}" data-action="writing-switch-review">作文批改</button>
-    </div>
-    ${renderWritingTrainingRoute(practice.stage)}
-    ${WRITING.tab === 'review' || draft.training?.kind !== 'assessment' ? renderFoundationFormulas(practice) : ''}
-    ${WRITING.tab==='review'?renderWritingReview(draft):renderWritingComposer(draft,stage)}
+    </div>` : ''}
+    ${renderWritingTrainingRoute(practice?.stage ?? stage.id)}
+    ${practice && (WRITING.tab === 'review' || draft.training?.kind !== 'assessment') ? renderFoundationFormulas(practice) : ''}
+    ${draft ? (WRITING.tab === 'review' ? renderWritingReview(draft) : renderWritingComposer(draft, stage)) : `
+      <section class="writing-empty">
+        <h2>暂无打开的练习</h2>
+        <p>可以新建一篇，或登录后打开云端草稿。</p>
+        <button class="btn primary" data-action="writing-new">${icon('plus', 13)} 新建练习</button>
+      </section>`}
     <footer class="footnote"><span>词库和阅读进度保存在当前浏览器。作文可以保存到本机或云端。</span></footer>
   </div>`;
 }
@@ -139,9 +159,70 @@ function renderWritingComposer(d,s){
 </div></form></section><aside class="writing-coach" aria-label="本阶段自检"><section class="rail-card"><div class="rail-title">${icon('leaf',15)} ${esc(s.name)} · 写完后自检</div><p class="writing-coach-intro">先检查功能是否完成，不必把每句话写得很复杂。</p><div class="writing-checks">${s.checks.map(c=>`<label><input type="checkbox" data-writing-check="${c.id}" ${d.checks.includes(c.id)?'checked':''}><span><strong>${esc(c.label)}</strong><small>${esc(c.help)}</small></span></label>`).join('')}</div><p class="writing-self-note">这是你的自检；批改时还会结合原文给出具体依据。</p></section><section class="writing-focus-card"><span class="overline">THIS STAGE</span><h3>这次先练好一件事</h3><p>${esc(s.avoid)}</p><button class="btn small" data-action="writing-copy-draft">${icon('plus',11)} 将当前草稿另存一份</button></section><p class="writing-next-note">${esc(s.ready)}<br>两篇独立新题连续达标后，看教练的晋级结论。</p></aside></div>`;
 }
 function openWritingGuide(){
-  const s=writingStage(writingDraft().stage);
+  const s=writingStage(activeWritingDraft()?.stage ?? WRITING.stage);
   openModal(`${modalHeader(s.name+' · 本阶段方法')}<p class="modal-description">${esc(s.goal)}</p><ol class="writing-guide-list">${s.focus.map(t=>`<li>${esc(t)}</li>`).join('')}</ol><div class="writing-guide-note">${esc(s.avoid)}</div><p class="writing-guide-source">依据你的 SOP 资料整理：${esc(s.source)}<br>这些是练习支架，不是官方评分量表；按实际题目和字数要求调整。</p><div class="modal-footer"><small>${esc(s.ready)}</small></div>`);
 }
+function renderWritingDraftDelete(action, id, title, scope, attributes = '') {
+  return `<button type="button" class="icon-btn writing-draft-delete" data-draft-delete
+    data-action="${action}" data-id="${esc(id)}" ${attributes} title="删除${scope}草稿"
+    aria-label="删除${scope}草稿 ${esc(title)}">${icon('trash', 15)}</button>`;
+}
+
+function confirmWritingDraftDeletion(scope, title, detail, onConfirm, fromCloudList = false) {
+  openModal(`${modalHeader('删除' + scope + '草稿')}
+    <p class="modal-description">确定删除「${esc(title)}」吗？${esc(detail)}</p>
+    <div class="modal-footer">
+      <button class="btn" data-action="${fromCloudList ? 'writing-cloud-list' : 'close-modal'}">取消</button>
+      <button type="button" id="writing-draft-delete-confirm" class="btn writing-draft-delete-confirm">确认删除</button>
+    </div>`);
+  const confirm = document.getElementById('writing-draft-delete-confirm');
+  confirm.onclick = async () => {
+    confirm.disabled = true;
+    try {
+      await onConfirm(confirm);
+    } finally {
+      confirm.disabled = false;
+    }
+  };
+}
+
+function selectRemainingWritingDraft() {
+  if (activeWritingDraft()) return;
+  const next = WRITING.drafts[0];
+  WRITING.activeId = next?.id ?? null;
+  WRITING.stage = next?.stage ?? WRITING.stage;
+  WRITING.tab = 'compose';
+  const exam = writingExamById(next?.examId);
+  if (exam) showWritingExam(exam);
+  if (state.view === 'writing') writingLocation();
+}
+
+function confirmLocalWritingDraftDeletion(id) {
+  const draft = WRITING.drafts.find(item => item.id === id && !item.cloudOnly);
+  if (!draft) return;
+  confirmWritingDraftDeletion('本机', draft.title || '未命名练习',
+    '本机草稿和附带批改将一起删除。已保存的云端副本会保留。', () => {
+      const previous = WRITING.drafts;
+      WRITING.drafts = previous.filter(item => item !== draft);
+      if (!writingPersist()) {
+        WRITING.drafts = previous;
+        toast('浏览器保存失败，本机草稿已保留。');
+        return;
+      }
+      selectRemainingWritingDraft();
+      closeModal();
+      render();
+      toast('本机草稿已删除。');
+    });
+}
+
+document.addEventListener('contextmenu', event => {
+  const button = event.target.closest('[data-writing-draft-row]')?.querySelector('[data-draft-delete]');
+  if (!button) return;
+  event.preventDefault();
+  button.click();
+});
+
 function handleWritingAction(action,button){
   if(handleWritingCloudAction(action,button)||handleWritingReviewAction(action,button))return true;
   if(!action.startsWith('writing-'))return false;
@@ -155,6 +236,7 @@ function handleWritingAction(action,button){
         window.scrollTo({top:0});
         break;
       case 'writing-new':newWritingDraft();break;
+      case 'writing-draft-delete':confirmLocalWritingDraftDeletion(button.dataset.id);break;
       case 'writing-diagnostic':
         newWritingDraft('foundation', {
           title: '基础诊断 F-D01 · 小组项目',
