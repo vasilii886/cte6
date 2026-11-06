@@ -50,9 +50,69 @@ function renderWritingSidebar(){
   const d=writingDraft(),stage=d.stage;
   return `<aside class="sidebar writing-sidebar" aria-label="作文练习阶段"><div class="side-title"><strong>作文练习册</strong><span>STEP BY STEP</span></div><div class="writing-stage-list">${WRITING_GUIDE.stages.map(s=>`<button class="writing-stage ${s.id===stage?'active':''}" data-action="writing-stage" data-stage="${s.id}" aria-label="练习阶段 ${s.name}"><span>${s.number}</span><div><strong>${esc(s.name)}</strong><small>${esc(s.tag)}</small></div>${s.id===stage?icon('check',12):icon('chevron',11)}</button>`).join('')}</div><p class="writing-side-copy">阶段由你选择。先把基础练稳，再慢慢往上走。</p><div class="side-divider"></div><button class="btn primary full-width" data-action="writing-new">${icon('plus',13)} 新建练习</button><div class="writing-draft-heading"><span>我的草稿</span><small>${WRITING.drafts.length}</small></div><div class="writing-drafts">${WRITING.drafts.slice(0,12).map(x=>`<button class="writing-draft ${x.id===d.id?'active':''}" data-action="writing-open-draft" data-id="${esc(x.id)}"><strong>${esc(x.title||'未命名练习')}</strong><small>${esc(writingStage(x.stage)?.name||'基础款')} · ${writingDraftWords(x)} 词 · ${x.cloudOnly?'云端':'本机'}</small></button>`).join('')}</div><button class="demo-btn" data-action="writing-guide">${icon('book',14)}<span>本阶段练习方法</span>${icon('chevron',11)}</button><div class="side-note">草稿仅保存在当前浏览器。<br>点击「下载草稿」可备份，或把草稿文件带去批改。</div></aside>`;
 }
+const foundationFormulas = [
+  {
+    number: 3, page: 10, purpose: '开头 · 驳论与表态',
+    pattern: 'A pervasive misconception is that [错误观点]. In reality, what truly matters is that [我的观点].',
+    check: '题目有值得回应的看法时用。两个 that 后各接一个完整陈述句。',
+    example: '回应「只要用 AI 就会削弱创造力」，提出「用 AI 探索想法，创作决定由自己做」。',
+  },
+  {
+    number: 5, page: 11, purpose: '主体 · 立论',
+    pattern: 'The primary argument in favor of [做法] lies in its capacity to [具体作用].',
+    check: 'in favor of 后接名词或动名词，capacity to 后接动词原形。',
+    example: '用 using AI as a creative partner 指出做法，用 offer new ways to organize ideas 写清好处。',
+  },
+  {
+    number: 8, page: 12, purpose: '主体 · 举例',
+    pattern: 'Consider, for instance, the case of [具体人物或情境].',
+    check: 'case of 后接名词短语。接着写这个人做了什么、产生了什么结果。',
+    example: '用 a student writing an essay 引出同一个学生的两种做法：照搬 AI 作文，或先写提纲再请 AI 提建议。',
+  },
+  {
+    number: 9, page: 12, purpose: '主体 · 例后分析',
+    pattern: 'This example illustrates a crucial point: [例子怎样支持分论点].',
+    check: '冒号后用完整句写清「做了什么 → 为什么有用」，扣回公式 5 的理由。',
+    example: '比较 AI 的建议和自己的提纲，让学生练习判断哪些想法可用，以及怎样发展它们。',
+  },
+  {
+    number: 13, page: 13, purpose: '结尾 · 总结',
+    pattern: 'In essence, [主题] is not merely [表层用途] but [更重要的用途].',
+    check: 'not merely 和 but 后用平行的结构，结论回扣正文已经论证的观点。',
+    example: '用 a way to finish a task faster 和 a tool for exploring ideas 对照，最后重申由人做决定。',
+  },
+];
+
+function renderFoundationFormulas(practice) {
+  if (practice.stage !== 'foundation') return '';
+  const showExamples = practice.examId === 'cet6-2025-06-1';
+  return `<details class="foundation-formulas">
+    <summary><strong>基础款固定公式</strong> <span>开头 3 → 主体 5 → 8 → 9 → 结尾 13</span></summary>
+    <div class="foundation-formulas-content">
+      <p>先定句子功能，再选公式，最后检查填进去的句子。题目有指定首句时，先按题面要求写；适合直接表态的题可以跳过公式 3 的驳论句。</p>
+      ${showExamples ? '<p><strong>2025 年 6 月第 1 套 · AI 与人类创造力定稿用法</strong></p>' : ''}
+      <ul>
+        ${foundationFormulas.map(formula => `<li>
+          <div class="foundation-formula-label">
+            <strong>公式 ${formula.number} · ${formula.purpose}</strong>
+            <small>《基础款》第 ${formula.page} 页</small>
+          </div>
+          <div>
+            <p class="foundation-formula-pattern" lang="en">${formula.pattern}</p>
+            <p>${formula.check}</p>
+            ${showExamples ? `<p class="foundation-formula-example">${formula.example}</p>` : ''}
+          </div>
+        </li>`).join('')}
+      </ul>
+      <p><strong>写完自检</strong>　公式和句子功能匹配 · 语法和搭配正确 · 例子与分析能支持观点</p>
+    </div>
+  </details>`;
+}
+
 function renderWriting(){
   if(!WRITING_GUIDE)return '<div class="empty-view"><h2>暂未能加载作文方法</h2><button class="btn" data-action="reload">刷新重试</button></div>';
   const draft=writingDraft(),stage=writingStage(draft.stage);
+  const practice = WRITING.tab === 'review' ? draft.review?.source ?? draft : draft;
   return `<div class="writing-page">${crumb('作文练习')}
     <div class="writing-heading"><div><div class="page-eyebrow"><i></i>YOUR WRITING NOTEBOOK</div>
     <h1>${esc(stage.headline)}</h1><p class="page-sub">选一道真题，练好这一稿。</p></div>${renderWritingCloudControls()}</div>
@@ -60,6 +120,7 @@ function renderWriting(){
       <button class="btn ${WRITING.tab==='compose'?'primary':''}" aria-pressed="${WRITING.tab==='compose'}" data-action="writing-switch-compose">写作草稿</button>
       <button class="btn ${WRITING.tab==='review'?'primary':''}" aria-pressed="${WRITING.tab==='review'}" data-action="writing-switch-review">作文批改</button>
     </div>
+    ${renderFoundationFormulas(practice)}
     ${WRITING.tab==='review'?renderWritingReview(draft):renderWritingComposer(draft,stage)}
     <footer class="footnote"><span>词库、阅读进度和草稿保存在当前浏览器。</span></footer>
   </div>`;
