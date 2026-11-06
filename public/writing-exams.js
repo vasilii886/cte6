@@ -21,7 +21,12 @@ function writingExamBrowse(d){
 function showWritingExam(e){WRITING.examYear=e.year;WRITING.examPeriod=e.period;WRITING.examPick=e.id;}
 function renderExamFigure(e){return e?.figure?`<figure class="writing-exam-figure"><a href="${esc(e.figure)}" target="_blank" rel="noopener" aria-label="打开原卷图表"><img src="${esc(e.figure)}" alt="${esc(e.figureAlt||e.title+'原卷图表')}"></a><figcaption>原卷附图 · 点击查看大图</figcaption></figure>`:'';}
 function renderExamSource(e){return `<small class="writing-exam-source">来源：${esc(e.sourceFile)}${e.page?` · PDF 第 ${e.page} 页`:''} · Part I Writing</small>`;}
-function preserveWritingDraft(d){return Boolean(d.review)||Boolean(d.body.trim()||d.outline.trim()||d.prompt.trim()&&!d.examId);}
+function preserveWritingDraft(d) {
+  const training = d.training;
+  return Boolean(d.review || d.body.trim() || d.outline.trim() || (d.prompt.trim() && !d.examId)
+    || training?.method || training?.notes || training?.selfCheck
+    || (training && Object.keys(writingTrainingTiming).some(key => training[key] != null)));
+}
 function renderExamQuestion(e,{preview=false}={}){
   return `<section class="writing-exam-question ${preview?'exam-preview':''}" aria-label="${preview?'真题预览':'本稿真题题面'}"><div class="writing-exam-question-head"><div><span class="tag">${esc(examPaperLabel(e))}</span><span class="tag outline">${esc(e.kind)}</span></div><span>${e.minutes} 分钟 · ${e.minWords}—${e.maxWords} 词</span></div><h3>${esc(e.title)}</h3><p class="writing-exam-directions" lang="en">${esc(e.prompt)}</p>${e.opening?`<div class="writing-exam-opening"><strong>题面指定首句</strong><p lang="en">${esc(e.opening)}</p></div>`:''}${renderExamFigure(e)}${renderExamSource(e)}</section>`;
 }
@@ -42,8 +47,11 @@ function applyWritingExam(id){
   let d=writingDraft();
   if(d.examId===id)return;
   if(preserveWritingDraft(d)){
-    newWritingDraft(d.stage);d=writingDraft();
+    const training = d.training?.kind === 'assessment' ? {kind: 'assessment'} : null;
+    newWritingDraft(d.stage, {training});
+    d=writingDraft();
   }
+  if (d.training?.independent) d.training.independent = false;
   Object.assign(d,{examId:e.id,title:`${examPaperLabel(e)} · ${e.title}`,prompt:e.prompt,minWords:e.minWords,maxWords:e.maxWords,checks:[],synced:false,updatedAt:new Date().toISOString()});
   showWritingExam(e);writingPersist();render();toast('已选真题，原题随本稿保存。');
 }

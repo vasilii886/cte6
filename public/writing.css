@@ -78,3 +78,59 @@
     margin-left: 6px;
   }
 }
+
+.writing-training-inputs {
+  margin-top: 14px;
+}
+.writing-training-inputs textarea {
+  margin-top: 0;
+}
+.writing-training-fields .writing-training-inputs .form-field textarea {
+  min-height: 64px;
+}
+.writing-training-timing {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.writing-training-independent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.writing-training-independent input {
+  accent-color: var(--green);
+  margin: 3px 0 0;
+}
+.writing-coach-feedback {
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.writing-coach-feedback-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.writing-coach-feedback-head h3 {
+  margin: 0;
+  color: var(--green);
+  font-size: 15px;
+}
+.writing-coach-feedback p {
+  margin: 8px 0;
+}
+.writing-coach-feedback ul {
+  padding-left: 20px;
+}
+.writing-coach-feedback li + li {
+  margin-top: 6px;
+}
+.writing-editor-footer > div {
+  flex-wrap: wrap;
+}

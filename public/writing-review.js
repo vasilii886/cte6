@@ -55,6 +55,7 @@ function normalizeWritingReview(value) {
       || !Array.isArray(value.entries)) return null;
   return {
     source: reviewSource(value.source),
+    coach: normalizeWritingCoach(value.coach, value.source.stage),
     band: reviewText(value.band, 80),
     summary: reviewText(value.summary, 1800),
     entries: value.entries.filter(entry => entry && typeof entry === 'object')
@@ -125,6 +126,7 @@ function renderWritingReview(draft) {
       <div><span class="overline">CET6 · 作文批改</span><h2>${esc(source.title || '未命名练习')}</h2>
         <p>${esc(heading)} · ${esc(writingStage(source.stage)?.name || '基础款')} · 原稿 ${writingDraftWords(source)} 词</p></div>
       <div class="review-actions">
+        ${draft.body.trim() ? '<button class="btn" data-action="writing-export-draft">下载草稿送批</button>' : ''}
         <button class="btn" data-action="writing-review-import">${icon('upload', 12)} 导入批改</button>
         ${review ? '<button class="btn" data-action="writing-review-export">下载批改记录</button>' : ''}
         <input type="file" id="writing-review-file" accept=".json,application/json" hidden>
@@ -137,8 +139,10 @@ function renderWritingReview(draft) {
         <label>练习档位<input data-review-meta="band" maxlength="80" value="${esc(review.band)}" placeholder="例如：9 档上沿，冲 11 档"></label>
         <label>立意与总评<textarea data-review-meta="summary" rows="3" maxlength="1800" placeholder="记下中心观点、整体表现和下次优先练习的内容">${esc(review.summary)}</textarea></label>
       </div></details>
+      ${renderWritingCoach(review.coach)}
       ${renderReviewComparison(review)}
       <div class="review-actions review-footer">
+        <button class="btn" data-action="writing-review-rewrite">用原稿写第二稿</button>
         ${renderWritingCloudSave()}
         <span id="writing-save-status" role="status">${esc(writingStatus())}</span>
       </div>` : `
@@ -228,6 +232,23 @@ function handleWritingReviewAction(action, button) {
         render();
       }
       break;
+    case 'writing-review-rewrite':
+      if (review) {
+        const samePrompt = draft.examId === review.source.examId && reviewSameText(draft.prompt, review.source.prompt);
+        newWritingDraft(review.source.stage, {
+          ...review.source,
+          title: review.source.title ? review.source.title + ' · 重写' : '作文重写',
+          parentSubmissionId: writingPracticeId(draft),
+          minWords: samePrompt ? draft.minWords : undefined,
+          maxWords: samePrompt ? draft.maxWords : undefined,
+        });
+      }
+      break;
+    case 'writing-review-next-stage': {
+      const nextStage = writingCoachNextStage(review?.coach);
+      if (nextStage) newWritingDraft(nextStage.id);
+      break;
+    }
     case 'writing-review-layout':
       if (Object.hasOwn(reviewLayouts, button.dataset.layout)) {
         reviewView.layout = button.dataset.layout;
@@ -299,9 +320,16 @@ function handleWritingReviewAction(action, button) {
 function importWritingReview(value) {
   const incoming = value?.format === reviewFormat && normalizeWritingReview(value.review);
   if (!incoming) throw new Error('文件不是可识别的拾词批改记录。');
+  const coach = incoming.coach;
+  if (value.review.coach != null && !coach) throw new Error('教练反馈缺少有效的阶段、草稿编号或验收结论。');
+  if (coach && incoming.entries.some(entry => !entry.original.trim() || !incoming.source.body.includes(entry.original))) {
+    throw new Error('有教练批注引用了原稿中找不到的原句。');
+  }
   const sameSource = draft => {
     const source = draft.review?.source ?? reviewSource(draft);
-    return source.examId === incoming.source.examId
+    return (!coach || (source.stage === incoming.source.stage
+      && [draft.id, writingPracticeId(draft)].includes(coach.draftId)))
+      && source.examId === incoming.source.examId
       && reviewSameText(source.prompt, incoming.source.prompt)
       && reviewSameText(source.body, incoming.source.body);
   };
@@ -309,6 +337,7 @@ function importWritingReview(value) {
   if (!sameSource(draft)) {
     draft = WRITING.drafts.find(sameSource);
     if (!draft) {
+      if (coach) throw new Error('这份反馈找不到匹配的原稿。请先打开送批时保存的草稿，再导入反馈。');
       const exam = writingExamById(incoming.source.examId);
       newWritingDraft(incoming.source.stage, {
         ...incoming.source, minWords: exam?.minWords, maxWords: exam?.maxWords,
@@ -332,6 +361,7 @@ function importWritingReview(value) {
     existing.entries.push(...additions);
     if (!existing.band) existing.band = incoming.band;
     if (!existing.summary) existing.summary = incoming.summary;
+    if (coach) existing.coach = coach;
   }
   WRITING.activeId = draft.id;
   WRITING.stage = draft.stage;

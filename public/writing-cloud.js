@@ -71,7 +71,10 @@ function renderWritingCloudSave() {
 
 function cloudDraftDocument(d) {
   const {stage, title, prompt, body, outline, minWords, maxWords, minutes, checks, examId, createdAt} = d;
-  return {stage, title, prompt, body, outline, minWords, maxWords, minutes, checks, examId, createdAt, ...(d.review ? {review: d.review} : {})};
+  const parentSubmissionId = d.parentSubmissionId ?? null;
+  const training = normalizeWritingTraining(d.training, parentSubmissionId);
+  return {stage, title, prompt, body, outline, minWords, maxWords, minutes, checks, examId, createdAt,
+    parentSubmissionId, training, ...(d.review ? {review: d.review} : {})};
 }
 
 async function signInWritingCloud(client) {
@@ -164,6 +167,8 @@ async function openWritingCloudDraft(client, id) {
     createdAt: typeof createdAt === 'string' ? createdAt : data.updated_at,
     id: crypto.randomUUID(), synced: false, cloudOnly: true, updatedAt: data.updated_at,
     cloudLink: {owner, id: data.id, revision: data.revision},
+    parentSubmissionId: typeof data.document.parentSubmissionId === 'string' ? data.document.parentSubmissionId : null,
+    training: normalizeWritingTraining(data.document.training, data.document.parentSubmissionId),
     review: normalizeWritingReview(data.document.review),
   };
   draft.cloudSnapshot = JSON.stringify(cloudDraftDocument(draft));
